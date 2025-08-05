@@ -160,6 +160,4 @@ image-to-dxf/
 - PyQt5
 - Potrace installed and available via CLI
 
----
 
-Let me know if you'd like a `requirements.txt`, sample usage guide, or GitHub template with issues and labels.
