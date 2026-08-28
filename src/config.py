@@ -66,7 +66,7 @@ class VectorizationConfig:
     filter_border_touching: bool = True
 
     # Geometry / Simplification
-    epsilon_factor: float = 0.0001
+    epsilon_factor: float = 0.0
     epsilon_absolute: Optional[float] = None
     force_closed: bool = True
     remove_collinear: bool = True
