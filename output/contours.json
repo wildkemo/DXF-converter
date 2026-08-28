@@ -12,7 +12,7 @@
         "hole_contours": 15,
         "original_vertices": 46412,
         "simplified_vertices": 1081,
-        "processing_time_ms": 49.11231994628906
+        "processing_time_ms": 74.34654235839844
     },
     "contours": [
         {

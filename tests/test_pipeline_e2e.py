@@ -201,3 +201,27 @@ def test_svg_export(tmp_path):
     with open(svg_path, 'r') as f:
         content = f.read()
         assert content == svg_str
+
+def test_dxf_export(tmp_path):
+    import cv2
+    import numpy as np
+    import json
+    from src.serialization import to_json
+    from src.dxf_exporter import export_dxf
+    
+    img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+    cv2.rectangle(img, (20, 20), (80, 80), (0, 0, 0), -1)
+    
+    config = VectorizationConfig(use_grayscale=False)
+    pipeline = VectorizationPipeline(config)
+    result = pipeline.process_image(img)
+    
+    json_path = str(tmp_path / "test.json")
+    to_json(result, output_path=json_path)
+    
+    dxf_path = str(tmp_path / "test.dxf")
+    export_dxf(json_path, dxf_path)
+    
+    import os
+    assert os.path.exists(dxf_path)
+    assert os.path.getsize(dxf_path) > 0
