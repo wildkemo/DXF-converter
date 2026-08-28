@@ -80,3 +80,45 @@ def test_pipeline_thin_lines():
     assert contour.simplified_point_count == 2
     assert contour.area == 0.0
     assert contour.perimeter > 100.0  # (length ~60 * 2 = 120)
+
+def test_dark_image_polarity():
+    from src.preprocessing import detect_background_polarity
+    from src.config import ContourPolarity
+    import numpy as np
+    
+    # Create a dark image: dark-gray background (100) and black lines (20)
+    # The overall image is much darker than the hardcoded 127 threshold.
+    img = np.ones((100, 100), dtype=np.uint8) * 100
+    import cv2
+    cv2.line(img, (20, 20), (80, 80), (20,), 3)
+    
+    polarity = detect_background_polarity(img)
+    # The border is 100, which is higher than the Otsu threshold (~60)
+    # so it should correctly detect DARK_ON_LIGHT.
+    assert polarity == ContourPolarity.DARK_ON_LIGHT
+
+def test_pipeline_low_contrast_faint_lines():
+    import cv2
+    import numpy as np
+    
+    # Very dark background with very faint lines
+    # Background: 30, Lines: 45
+    # The contrast difference is only 15, very hard to see without CLAHE
+    img = np.ones((100, 100, 3), dtype=np.uint8) * 30
+    cv2.rectangle(img, (20, 20), (80, 80), (45, 45, 45), -1)
+    
+    # Run with default config (CLAHE should be True)
+    config = VectorizationConfig(
+        threshold_method=ThresholdMethod.OTSU,
+        coordinate_space=CoordinateSpace.PIXEL,
+        debug_visualization=False,
+        min_area=10.0,
+        min_perimeter=10.0
+    )
+    
+    pipeline = VectorizationPipeline(config)
+    result = pipeline.process_image(img)
+    
+    # The faint rectangle should be found!
+    assert result.metrics.total_contours >= 1
+    assert any(c.area > 3000 for c in result.contours)

@@ -84,7 +84,10 @@ def detect_background_polarity(gray_image: np.ndarray) -> ContourPolarity:
         gray_image[:, 0], gray_image[:, w-1]
     ])
     median_border = np.median(border_pixels)
-    if median_border > 127:
+    
+    ret, _ = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    
+    if median_border > ret:
         return ContourPolarity.DARK_ON_LIGHT
     else:
         return ContourPolarity.LIGHT_ON_DARK

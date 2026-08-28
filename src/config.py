@@ -48,7 +48,7 @@ class VectorizationConfig:
     filter_sigma: float = 1.0
     
     # Contrast Enhancement
-    clahe_enabled: bool = False
+    clahe_enabled: bool = True
     clahe_clip_limit: float = 2.0
     clahe_grid_size: Tuple[int, int] = (8, 8)
     
@@ -63,11 +63,11 @@ class VectorizationConfig:
     filter_border_touching: bool = True
 
     # Geometry / Simplification
-    epsilon_factor: float = 0.005
+    epsilon_factor: float = 0.0001
     epsilon_absolute: Optional[float] = None
     force_closed: bool = True
     remove_collinear: bool = True
-    collinear_angle_threshold_deg: float = 1.0
+    collinear_angle_threshold_deg: float = 0.1
     
     # Output Space
     coordinate_space: CoordinateSpace = CoordinateSpace.PIXEL
