@@ -178,3 +178,26 @@ def test_nested_shapes_and_smoothness():
     # Without simplification, it should have > 50 vertices (collinear points are still removed).
     circle_contours = [c for c in result.contours if c.simplified_point_count > 50]
     assert len(circle_contours) >= 1
+
+def test_svg_export(tmp_path):
+    import cv2
+    import numpy as np
+    from src.serialization import to_svg
+    
+    img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+    cv2.rectangle(img, (20, 20), (80, 80), (0, 0, 0), -1)
+    
+    config = VectorizationConfig(use_grayscale=False)
+    pipeline = VectorizationPipeline(config)
+    result = pipeline.process_image(img)
+    
+    svg_path = str(tmp_path / "test.svg")
+    svg_str = to_svg(result, svg_path)
+    
+    assert '<?xml version="1.0"' in svg_str
+    assert '<svg width="100" height="100"' in svg_str
+    assert '<polygon points="' in svg_str
+    
+    with open(svg_path, 'r') as f:
+        content = f.read()
+        assert content == svg_str

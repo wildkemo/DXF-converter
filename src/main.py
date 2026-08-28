@@ -4,7 +4,7 @@ import sys
 
 from src.config import VectorizationConfig, ThresholdMethod, CoordinateSpace
 from src.vectorization import VectorizationPipeline
-from src.serialization import to_json
+from src.serialization import to_json, to_svg
 
 
 def main():
@@ -48,6 +48,10 @@ def main():
         # Save JSON
         json_path = os.path.join(args.output, "contours.json")
         to_json(result, output_path=json_path)
+        
+        # Save SVG
+        svg_path = os.path.join(args.output, "contours.svg")
+        to_svg(result, output_path=svg_path)
         
         print(f"Vectorization complete: {result.metrics.total_contours} contours extracted.")
         print(f"Vertex reduction: {result.metrics.vertex_reduction_pct:.2f}%")
