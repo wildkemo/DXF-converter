@@ -33,7 +33,10 @@ class ContourPolarity(str, Enum):
 
 @dataclass
 class VectorizationConfig:
-    # Thresholding / Binarization
+    use_grayscale: bool = False
+    color_distance_threshold: float = 30.0
+    
+    # Thresholding / Binarization (Used if use_grayscale is True)
     threshold_method: ThresholdMethod = ThresholdMethod.OTSU
     threshold_value: int = 127
     adaptive_block_size: int = 11

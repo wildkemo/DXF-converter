@@ -109,6 +109,7 @@ def test_pipeline_low_contrast_faint_lines():
     
     # Run with default config (CLAHE should be True)
     config = VectorizationConfig(
+        use_grayscale=True,
         threshold_method=ThresholdMethod.OTSU,
         coordinate_space=CoordinateSpace.PIXEL,
         debug_visualization=False,
@@ -122,3 +123,26 @@ def test_pipeline_low_contrast_faint_lines():
     # The faint rectangle should be found!
     assert result.metrics.total_contours >= 1
     assert any(c.area > 3000 for c in result.contours)
+
+def test_direct_color_distance():
+    import cv2
+    import numpy as np
+    
+    # Image with white background, yellow line, light-blue triangle
+    img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+    cv2.line(img, (20, 20), (80, 20), (0, 255, 255), 2) # Yellow
+    
+    pts = np.array([[50, 40], [80, 80], [20, 80]], np.int32)
+    cv2.fillPoly(img, [pts], (255, 200, 0)) # Light blue
+    
+    config = VectorizationConfig(
+        use_grayscale=False, # Direct color mode
+        color_distance_threshold=30.0,
+        debug_visualization=False
+    )
+    
+    pipeline = VectorizationPipeline(config)
+    result = pipeline.process_image(img)
+    
+    # We should detect 2 contours: the yellow line and the blue triangle
+    assert result.metrics.total_contours == 2

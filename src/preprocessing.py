@@ -136,3 +136,19 @@ def binarize_image(gray: np.ndarray, config: VectorizationConfig) -> np.ndarray:
         raise ValueError(f"Unknown threshold method: {config.threshold_method}")
 
     return binary
+
+def binarize_color_distance(bgr_image: np.ndarray, threshold: float = 30.0) -> np.ndarray:
+    """Binarize by extracting any color that significantly differs from the background color."""
+    h, w = bgr_image.shape[:2]
+    borders = np.concatenate([
+        bgr_image[0, :], bgr_image[h-1, :], 
+        bgr_image[:, 0], bgr_image[:, w-1]
+    ])
+    borders_1d = borders[:, 0].astype(np.uint32) << 16 | borders[:, 1].astype(np.uint32) << 8 | borders[:, 2].astype(np.uint32)
+    unique, counts = np.unique(borders_1d, return_counts=True)
+    bg_1d = unique[np.argmax(counts)]
+    bg_color = np.array([(bg_1d >> 16) & 255, (bg_1d >> 8) & 255, bg_1d & 255], dtype=np.float32)
+    
+    dist = np.linalg.norm(bgr_image.astype(np.float32) - bg_color, axis=-1)
+    return (dist > threshold).astype(np.uint8) * 255
+

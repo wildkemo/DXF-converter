@@ -2,6 +2,7 @@ import time
 import os
 from typing import Union, Optional
 import numpy as np
+import cv2
 
 from src.config import VectorizationConfig
 from src.models import VectorizationResult, ImageMetadata, VectorizationMetrics
@@ -35,7 +36,13 @@ class VectorizationPipeline:
         )
         
         # 2. Preprocess
-        gray, filtered, binary = apply_preprocessing(bgr_image, self.config)
+        if self.config.use_grayscale:
+            gray, filtered, binary = apply_preprocessing(bgr_image, self.config)
+        else:
+            from src.preprocessing import binarize_color_distance
+            gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
+            filtered = gray.copy()
+            binary = binarize_color_distance(bgr_image, self.config.color_distance_threshold)
         
         # 3. Detect and Process Contours
         contours = extract_and_process_contours(binary, width, height, self.config)
