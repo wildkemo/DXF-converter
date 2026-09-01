@@ -78,6 +78,19 @@ def extract_and_process_contours(binary_image: np.ndarray, width: int, height: i
     # 4. Reparenting orphaned children
     # Find the closest valid ancestor for each node
     for i, node in enumerate(nodes):
+        # Determine topological depth
+        level = 0
+        curr_parent = hierarchy[i][3]
+        while curr_parent != -1:
+            level += 1
+            curr_parent = hierarchy[curr_parent][3]
+            
+        # Refine Canny double-lines in Direct Color Mode
+        # The inner trace of the 1px Canny line always occupies the odd topological levels.
+        # We discard them to ensure a single, clean polyline per topological edge.
+        if not config.use_grayscale and level % 2 != 0:
+            node['valid'] = False
+        
         if not node['valid']:
             continue
             

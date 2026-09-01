@@ -168,10 +168,9 @@ def test_nested_shapes_and_smoothness():
     pipeline = VectorizationPipeline(config)
     result = pipeline.process_image(img)
     
-    # Because of Canny edges, it will detect the outer edge of the square,
-    # the inner edge of the square, the outer edge of the circle, 
-    # and the inner edge of the circle. Total = 4 contours minimum.
-    assert result.metrics.total_contours >= 4
+    # Because of Canny double-line elimination, it will detect exactly the true shapes:
+    # the square outer boundary, and the circle hole boundary. Total = 2 contours.
+    assert result.metrics.total_contours == 2
     
     # Verify absolute smoothness (0.0 epsilon_factor)
     # A circle of radius 20 has perimeter ~ 125.
