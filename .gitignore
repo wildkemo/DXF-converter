@@ -27,3 +27,7 @@ htmlcov/
 # Project specific
 output/*
 !output/.gitkeep
+
+# Ignore datasets and inputs
+dataset/
+input/
