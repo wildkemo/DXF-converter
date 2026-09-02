@@ -31,3 +31,4 @@ output/*
 # Ignore datasets and inputs
 dataset/
 input/
+/dataset
