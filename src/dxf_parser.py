@@ -13,7 +13,7 @@ def parse_entity(entity):
     # Generic dump of all DXF attributes (handle, layer, color, etc.) to neglect nothing
     ent_data['attribs'] = {k: str(v) for k, v in entity.dxf.all_existing_dxf_attribs().items()}
     
-    # Extract points for Polylines/Splines
+    # Extract points for Polylines
     if hasattr(entity, 'get_points'):
         try: ent_data['points'] = [list(p) for p in entity.get_points()]
         except: pass
@@ -47,6 +47,14 @@ def parse_entity(entity):
             ent_data['text'] = entity.text
             if hasattr(entity.dxf, 'insert'):
                 ent_data['insert'] = [entity.dxf.insert.x, entity.dxf.insert.y, entity.dxf.insert.z]
+        except: pass
+    elif entity.dxftype() == 'SPLINE':
+        try:
+            ent_data['fit_points'] = [list(p) for p in entity.fit_points]
+            ent_data['control_points'] = [list(p) for p in entity.control_points]
+            ent_data['degree'] = entity.dxf.degree
+            ent_data['closed'] = entity.closed
+            ent_data['knots'] = list(entity.knots)
         except: pass
         
     # Extract XDATA (Extended Data) to ensure metadata is preserved

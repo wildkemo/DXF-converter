@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import pytest
+import ezdxf
 from src.config import VectorizationConfig, CoordinateSpace, ThresholdMethod
 from src.vectorization import VectorizationPipeline
 from src.preprocessing import binarize_image, load_and_validate_image
@@ -224,3 +225,51 @@ def test_dxf_export(tmp_path):
     import os
     assert os.path.exists(dxf_path)
     assert os.path.getsize(dxf_path) > 0
+
+def test_dxf_export_produces_splines(tmp_path):
+    import cv2
+    import numpy as np
+    import json
+    from src.serialization import to_json
+    from src.dxf_exporter import export_dxf
+
+    img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+    cv2.rectangle(img, (20, 20), (80, 80), (0, 0, 0), -1)
+
+    config = VectorizationConfig(use_grayscale=False)
+    pipeline = VectorizationPipeline(config)
+    result = pipeline.process_image(img)
+
+    json_path = str(tmp_path / "test.json")
+    to_json(result, output_path=json_path)
+
+    dxf_path = str(tmp_path / "test.dxf")
+    export_dxf(json_path, dxf_path)
+
+    # Re-read and verify entity types
+    doc = ezdxf.readfile(dxf_path)
+    msp = doc.modelspace()
+    entity_types = [e.dxftype() for e in msp]
+    assert 'SPLINE' in entity_types
+    assert 'LWPOLYLINE' not in entity_types
+
+def test_save_dxf_produces_splines(tmp_path):
+    import cv2
+    import numpy as np
+    from src.main import save_dxf
+
+    img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+    cv2.rectangle(img, (20, 20), (80, 80), (0, 0, 0), -1)
+
+    config = VectorizationConfig(use_grayscale=False)
+    pipeline = VectorizationPipeline(config)
+    result = pipeline.process_image(img)
+
+    dxf_path = str(tmp_path / "test_main.dxf")
+    save_dxf(result, dxf_path)
+
+    doc = ezdxf.readfile(dxf_path)
+    msp = doc.modelspace()
+    entity_types = [e.dxftype() for e in msp]
+    assert 'SPLINE' in entity_types
+    assert 'LWPOLYLINE' not in entity_types

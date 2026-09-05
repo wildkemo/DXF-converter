@@ -50,11 +50,13 @@ def export_dxf(json_path: str, output_path: str):
             x, y = p['x'], p['y']
             if flip_y:
                 y = height - y
-            dxf_points.append((x, y))
+            dxf_points.append((x, y, 0))
             
-        # Create Polyline
+        # Create Spline
         is_closed = c.get('is_closed', True)
-        polyline = msp.add_lwpolyline(dxf_points, close=is_closed, dxfattribs={"layer": layer_name})
+        spline = msp.add_spline(dxf_points, dxfattribs={"layer": layer_name})
+        if is_closed:
+            spline.closed = True
         
         # Inject JSON metrics directly into CAD XDATA
         xdata = [
@@ -63,7 +65,7 @@ def export_dxf(json_path: str, output_path: str):
             (1040, c.get('area', 0.0)),
             (1040, c.get('perimeter', 0.0))
         ]
-        polyline.set_xdata("DXF_CONVERTER", xdata)
+        spline.set_xdata("DXF_CONVERTER", xdata)
         
     doc.saveas(output_path)
     print(f"Successfully generated DXF: {output_path} ({len(contours)} geometries)")

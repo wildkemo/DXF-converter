@@ -32,3 +32,5 @@ output/*
 dataset/
 input/
 /dataset
+/checkpoints
+/processed
