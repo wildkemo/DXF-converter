@@ -123,13 +123,8 @@ def extract_and_process_contours(binary_image: np.ndarray, width: int, height: i
         raw_pts = node['raw_points']
         is_closed = config.force_closed
         
-        # Simplify
-        pts = simplify_contour(raw_pts, config.epsilon_factor, config.epsilon_absolute, is_closed)
-        
-        # Cleanup
-        pts = remove_duplicate_vertices(pts)
-        if config.remove_collinear:
-            pts = remove_collinear_points(pts, config.collinear_angle_threshold_deg, is_closed)
+        # Skip simplification to keep all raw points
+        pts = raw_pts
             
         if len(pts) < 2:
             continue # Invalid shape

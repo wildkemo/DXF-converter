@@ -6,7 +6,7 @@ import shutil
 
 from src.config import VectorizationConfig, ThresholdMethod, CoordinateSpace
 from src.vectorization import VectorizationPipeline
-from src.serialization import to_json, to_svg
+from src.serialization import to_json, to_svg, to_points_image
 import ezdxf
 
 
@@ -89,6 +89,10 @@ def main():
             svg_path = os.path.join(args.output, "contours.svg")
             to_svg(result, output_path=svg_path)
             
+            # Save points image
+            img_path = os.path.join(args.output, "points.png")
+            to_points_image(result, output_path=img_path)
+            
             print(f"Vectorization complete: {result.metrics.total_contours} contours extracted.")
             print(f"Results saved to '{args.output}'")
         except Exception as e:
@@ -139,6 +143,10 @@ def main():
             # Save SVG
             svg_path = os.path.join(pair_folder, "contours.svg")
             to_svg(result, output_path=svg_path)
+            
+            # Save points image
+            img_path = os.path.join(pair_folder, "points.png")
+            to_points_image(result, output_path=img_path)
             
             print(f"Vectorization complete for {pair_folder}: {result.metrics.total_contours} contours extracted.")
             print(f"Results saved to '{pair_folder}'")

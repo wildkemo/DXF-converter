@@ -2,6 +2,8 @@ import json
 from dataclasses import asdict
 from typing import Dict, Any, Union
 import copy
+import cv2
+import numpy as np
 
 from src.models import VectorizationResult, Contour, Point, BoundingBox, ImageMetadata, VectorizationMetrics
 
@@ -108,3 +110,31 @@ def to_svg(result: VectorizationResult, output_path: str = None) -> str:
             f.write(svg_str)
             
     return svg_str
+
+def to_points_image(result: VectorizationResult, output_path: str) -> None:
+    """Draw all contour points on a blank white canvas and save as an image."""
+    w, h = result.metadata.width, result.metadata.height
+    coord_space = result.metadata.coordinate_space
+    
+    # Create white canvas
+    img = np.ones((h, w, 3), dtype=np.uint8) * 255
+    
+    for c in result.contours:
+        for p in c.points:
+            x, y = p.x, p.y
+            
+            # Map back to pixel space for drawing
+            if "normalized" in coord_space:
+                x = int(x * w)
+                y = int(y * h)
+            else:
+                x = int(x)
+                y = int(y)
+                
+            if "cartesian" in coord_space:
+                y = h - y
+                
+            # Draw a 1-pixel black dot
+            cv2.circle(img, (int(x), int(y)), 1, (0, 0, 0), -1)
+            
+    cv2.imwrite(output_path, img)
