@@ -10,6 +10,8 @@ from src.serialization import to_json, to_svg, to_points_image
 import ezdxf
 
 
+import numpy as np
+
 def save_dxf(result, output_path):
     doc = ezdxf.new('R2010')
     msp = doc.modelspace()
@@ -21,6 +23,8 @@ def save_dxf(result, output_path):
     # If the vectorization was done in pixel/normalized space, we must invert Y for DXF.
     invert_y = "cartesian" not in coord_space
     
+    layers_created = set()
+    
     for c in result.contours:
         if len(c.points) > 1:
             if invert_y:
@@ -31,7 +35,28 @@ def save_dxf(result, output_path):
             else:
                 pts = [(p.x, p.y, 0) for p in c.points]
                 
-            spline = msp.add_spline(pts)
+            # For closed curves, avoid duplicated first/last point in fit points (AutoCAD closes automatically)
+            if c.is_closed and len(pts) > 2:
+                p_first = np.array(pts[0])
+                p_last = np.array(pts[-1])
+                if np.linalg.norm(p_first - p_last) < 1e-4:
+                    pts = pts[:-1]
+
+            is_dup = getattr(c, 'is_duplicate', False)
+            if is_dup:
+                layer_name = "CNC_OFFSET"
+                color = 4  # Cyan for CNC offset toolpaths
+            else:
+                is_hole = getattr(c, 'is_hole', False)
+                level = getattr(c, 'hierarchy_level', 0)
+                layer_name = f"LEVEL_{level}_{'HOLE' if is_hole else 'OUTER'}"
+                color = 1 if is_hole else 7
+
+            if layer_name not in layers_created:
+                doc.layers.add(name=layer_name, color=color)
+                layers_created.add(layer_name)
+
+            spline = msp.add_spline(pts, dxfattribs={"layer": layer_name})
             if c.is_closed:
                 spline.closed = True
     doc.saveas(output_path)
@@ -44,14 +69,33 @@ def main():
     parser.add_argument("--output", type=str, default=None, help="Path to save output directory for a single image")
     parser.add_argument("-d", "--dataset", default="dxf coloring/dataset", help="Path to dataset directory containing pair_n folders")
     parser.add_argument("-t", "--threshold-method", type=str, default="otsu", 
-                        choices=["otsu", "adaptive_gaussian", "adaptive_mean", "canny", "binary_fixed"],
+                        choices=[m.value for m in ThresholdMethod],
                         help="Binarization method")
     parser.add_argument("-e", "--epsilon-factor", type=float, default=0.005, help="RDP simplification factor")
     parser.add_argument("-c", "--coord-space", type=str, default="pixel",
-                        choices=["pixel", "normalized", "cartesian_pixel", "cartesian_normalized"],
+                        choices=[cs.value for cs in CoordinateSpace],
                         help="Output coordinate space")
     parser.add_argument("--min-area", type=float, default=10.0, help="Minimum contour area to keep")
+    parser.add_argument("--min-perimeter", type=float, default=10.0, help="Minimum contour perimeter to keep")
     parser.add_argument("--no-debug", action="store_true", help="Disable debug visualizations")
+    parser.add_argument("--smooth", action="store_true", default=True, help="Enable contour smoothing (default: True)")
+    parser.add_argument("--no-smooth", action="store_false", dest="smooth", help="Disable contour smoothing")
+    parser.add_argument("--smooth-sigma", type=float, default=1.5, help="Contour smoothing Gaussian sigma (default: 1.5)")
+    parser.add_argument("--preserve-corners", action="store_true", default=True, help="Preserve sharp corners during smoothing (default: True)")
+    parser.add_argument("--no-preserve-corners", action="store_false", dest="preserve_corners", help="Disable corner preservation")
+    parser.add_argument("--corner-threshold", type=float, default=50.0, help="Corner turning angle threshold in degrees (default: 50.0)")
+    
+    # CNC Line Duplication / Offset arguments
+    parser.add_argument("-D", "--duplicate-distance", type=float, default=None,
+                        help="CNC duplicate line offset distance (in coordinate units/pixels, e.g. 3.0 or -2.0 for cutter compensation)")
+    parser.add_argument("--duplicate-both-sides", action="store_true",
+                        help="Generate CNC offset lines on both sides (+distance and -distance)")
+    parser.add_argument("--miter-limit", type=float, default=2.5,
+                        help="Miter limit for sharp corners during line offsetting (default: 2.5)")
+                        
+    # Enhanced detection flag
+    parser.add_argument("--detect-more", action="store_true",
+                        help="Ultra-detailed detection mode: maximizes detected contours using multi-channel hybrid edges and micro-feature thresholds")
     
     args = parser.parse_args()
     
@@ -61,7 +105,27 @@ def main():
     config.epsilon_factor = args.epsilon_factor
     config.coordinate_space = CoordinateSpace(args.coord_space)
     config.min_area = args.min_area
+    config.min_perimeter = args.min_perimeter
     config.debug_visualization = not args.no_debug
+    config.smooth_contours = args.smooth
+    config.smooth_sigma = args.smooth_sigma
+    config.corner_preservation = args.preserve_corners
+    config.corner_threshold_deg = args.corner_threshold
+    
+    # CNC Offset configuration
+    config.duplicate_distance = args.duplicate_distance
+    config.duplicate_both_sides = args.duplicate_both_sides
+    config.miter_limit = args.miter_limit
+    
+    # When user specifies threshold-method or detect-more, activate grayscale / enhanced preprocessing
+    if args.detect_more:
+        config.threshold_method = ThresholdMethod.HYBRID_ALL
+        config.use_grayscale = True
+        config.min_area = min(args.min_area, 2.0)
+        config.min_perimeter = min(args.min_perimeter, 4.0)
+        config.clahe_clip_limit = 3.0
+    elif args.threshold_method != "otsu" or "--threshold-method" in sys.argv or "-t" in sys.argv:
+        config.use_grayscale = True
     
     pipeline = VectorizationPipeline(config)
     

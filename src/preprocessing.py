@@ -62,7 +62,7 @@ def apply_preprocessing(bgr_image: np.ndarray, config: VectorizationConfig) -> T
         filtered = gray.copy()
         
     # 3. Binarization
-    binary = binarize_image(filtered, config)
+    binary = binarize_image(filtered, config, bgr_image=bgr_image)
     
     # 4. Morphology
     if config.morph_open_kernel > 0:
@@ -93,8 +93,8 @@ def detect_background_polarity(gray_image: np.ndarray) -> ContourPolarity:
         return ContourPolarity.LIGHT_ON_DARK
 
 
-def binarize_image(gray: np.ndarray, config: VectorizationConfig) -> np.ndarray:
-    """Binarize the grayscale image based on config."""
+def binarize_image(gray: np.ndarray, config: VectorizationConfig, bgr_image: Optional[np.ndarray] = None) -> np.ndarray:
+    """Binarize the grayscale image based on config, supporting multi-channel and hybrid methods."""
     polarity = config.polarity
     if polarity == ContourPolarity.AUTO:
         polarity = detect_background_polarity(gray)
@@ -111,6 +111,23 @@ def binarize_image(gray: np.ndarray, config: VectorizationConfig) -> np.ndarray:
             
         edges = cv2.Canny(gray, low, high)
         return edges
+
+    if config.threshold_method == ThresholdMethod.MULTI_CHANNEL_CANNY:
+        low = int(config.canny_low) if config.canny_low is not None else 20
+        high = int(config.canny_high) if config.canny_high is not None else 60
+        if bgr_image is not None:
+            edges = cv2.Canny(bgr_image, low, high)
+            lab = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2LAB)
+            e_a = cv2.Canny(lab[:, :, 1], low, high)
+            e_b = cv2.Canny(lab[:, :, 2], low, high)
+            return cv2.bitwise_or(edges, cv2.bitwise_or(e_a, e_b))
+        return cv2.Canny(gray, low, high)
+
+    if config.threshold_method == ThresholdMethod.MORPHOLOGICAL_GRADIENT:
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        grad = cv2.morphologyEx(gray, cv2.MORPH_GRADIENT, kernel)
+        _, binary = cv2.threshold(grad, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        return binary
 
     # For thresholding, we want the objects to be WHITE (255) and background BLACK (0)
     # for findContours to work properly.
@@ -132,6 +149,22 @@ def binarize_image(gray: np.ndarray, config: VectorizationConfig) -> np.ndarray:
                                        config.adaptive_block_size, config.adaptive_c)
     elif config.threshold_method == ThresholdMethod.BINARY_FIXED:
         _, binary = cv2.threshold(gray, config.threshold_value, 255, thresh_type)
+    elif config.threshold_method == ThresholdMethod.HYBRID_ALL:
+        # High-sensitivity combined detection: Multi-channel Canny + Adaptive Gaussian
+        low = int(config.canny_low) if config.canny_low is not None else 20
+        high = int(config.canny_high) if config.canny_high is not None else 60
+        if bgr_image is not None:
+            edges = cv2.Canny(bgr_image, low, high)
+            lab = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2LAB)
+            e_a = cv2.Canny(lab[:, :, 1], low, high)
+            e_b = cv2.Canny(lab[:, :, 2], low, high)
+            edges = cv2.bitwise_or(edges, cv2.bitwise_or(e_a, e_b))
+        else:
+            edges = cv2.Canny(gray, low, high)
+        adaptive_method = cv2.ADAPTIVE_THRESH_GAUSSIAN_C
+        adapt = cv2.adaptiveThreshold(gray, 255, adaptive_method, thresh_type, 
+                                      config.adaptive_block_size, config.adaptive_c)
+        binary = cv2.bitwise_or(edges, adapt)
     else:
         raise ValueError(f"Unknown threshold method: {config.threshold_method}")
 
@@ -142,5 +175,8 @@ def binarize_color_distance(bgr_image: np.ndarray, threshold: float = 30.0) -> n
     low_thresh = max(10, int(threshold))
     high_thresh = min(255, int(threshold * 3))
     edges = cv2.Canny(bgr_image, low_thresh, high_thresh)
-    return edges
+    lab = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2LAB)
+    e_a = cv2.Canny(lab[:, :, 1], low_thresh, high_thresh)
+    e_b = cv2.Canny(lab[:, :, 2], low_thresh, high_thresh)
+    return cv2.bitwise_or(edges, cv2.bitwise_or(e_a, e_b))
 

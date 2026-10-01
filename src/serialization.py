@@ -63,7 +63,10 @@ def from_json(json_source: Union[str, Dict[str, Any]]) -> VectorizationResult:
             simplified_point_count=c_data['simplified_point_count'],
             area=c_data['area'],
             perimeter=c_data['perimeter'],
-            bounding_box=bbox
+            bounding_box=bbox,
+            is_duplicate=c_data.get('is_duplicate', False),
+            offset_distance=c_data.get('offset_distance', None),
+            original_contour_id=c_data.get('original_contour_id', None)
         )
         contours.append(c)
         
@@ -92,16 +95,29 @@ def to_svg(result: VectorizationResult, output_path: str = None) -> str:
     svg = [
         f'<?xml version="1.0" encoding="UTF-8" standalone="no"?>',
         f'<svg width="{w}" height="{h}" viewBox="{viewbox}" xmlns="http://www.w3.org/2000/svg">',
-        f'  <rect width="100%" height="100%" fill="white" />',
-        f'  <g fill="none" stroke="black" stroke-width="{stroke_width}" {transform}>'
+        f'  <rect width="100%" height="100%" fill="white" />'
     ]
     
-    for c in result.contours:
+    orig_contours = [c for c in result.contours if not getattr(c, 'is_duplicate', False)]
+    dup_contours = [c for c in result.contours if getattr(c, 'is_duplicate', False)]
+    
+    # Original contours in black
+    svg.append(f'  <g id="original_contours" fill="none" stroke="black" stroke-width="{stroke_width}" {transform}>')
+    for c in orig_contours:
         pts_str = " ".join([f"{p.x},{p.y}" for p in c.points])
         tag = "polygon" if c.is_closed else "polyline"
         svg.append(f'    <{tag} points="{pts_str}" />')
-        
     svg.append('  </g>')
+    
+    # CNC offset duplicates in cyan / dashed
+    if dup_contours:
+        svg.append(f'  <g id="cnc_offset_contours" fill="none" stroke="#0080ff" stroke-width="{stroke_width}" stroke-dasharray="4,2" {transform}>')
+        for c in dup_contours:
+            pts_str = " ".join([f"{p.x},{p.y}" for p in c.points])
+            tag = "polygon" if c.is_closed else "polyline"
+            svg.append(f'    <{tag} points="{pts_str}" />')
+        svg.append('  </g>')
+        
     svg.append('</svg>')
     
     svg_str = "\n".join(svg)
@@ -120,6 +136,7 @@ def to_points_image(result: VectorizationResult, output_path: str) -> None:
     img = np.ones((h, w, 3), dtype=np.uint8) * 255
     
     for c in result.contours:
+        color = (255, 128, 0) if getattr(c, 'is_duplicate', False) else (0, 0, 0) # Cyan-blue for duplicates, black for original
         for p in c.points:
             x, y = p.x, p.y
             
@@ -134,7 +151,7 @@ def to_points_image(result: VectorizationResult, output_path: str) -> None:
             if "cartesian" in coord_space:
                 y = h - y
                 
-            # Draw a 1-pixel black dot
-            cv2.circle(img, (int(x), int(y)), 1, (0, 0, 0), -1)
+            # Draw a 1-pixel dot
+            cv2.circle(img, (int(x), int(y)), 1, color, -1)
             
     cv2.imwrite(output_path, img)

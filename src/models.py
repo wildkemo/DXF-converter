@@ -38,6 +38,9 @@ class Contour:
     area: float
     perimeter: float
     bounding_box: BoundingBox
+    is_duplicate: bool = False
+    offset_distance: Optional[float] = None
+    original_contour_id: Optional[int] = None
 
 @dataclass
 class ImageMetadata:

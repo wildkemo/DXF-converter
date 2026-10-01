@@ -36,7 +36,15 @@ class VectorizationPipeline:
         )
         
         # 2. Preprocess
-        if self.config.use_grayscale:
+        from src.config import ThresholdMethod
+        if self.config.use_grayscale or self.config.threshold_method in [
+            ThresholdMethod.MULTI_CHANNEL_CANNY,
+            ThresholdMethod.HYBRID_ALL,
+            ThresholdMethod.MORPHOLOGICAL_GRADIENT,
+            ThresholdMethod.ADAPTIVE_GAUSSIAN,
+            ThresholdMethod.ADAPTIVE_MEAN,
+            ThresholdMethod.BINARY_FIXED
+        ]:
             gray, filtered, binary = apply_preprocessing(bgr_image, self.config)
         else:
             from src.preprocessing import binarize_color_distance

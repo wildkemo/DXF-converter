@@ -3,7 +3,31 @@ import numpy as np
 from typing import List, Dict, Tuple, Optional
 from src.config import VectorizationConfig
 from src.models import Contour, Point, BoundingBox
-from src.geometry import simplify_contour, remove_duplicate_vertices, remove_collinear_points, normalize_winding_order, transform_coordinates
+from src.geometry import (
+    smooth_contour,
+    simplify_contour,
+    remove_duplicate_vertices,
+    remove_collinear_points,
+    normalize_winding_order,
+    transform_coordinates,
+    offset_contour
+)
+
+
+def is_canny_clone(parent_pts: np.ndarray, child_pts: np.ndarray) -> bool:
+    """
+    Check if child contour is merely the 1px-stroke inner twin of its parent edge.
+    When findContours runs on thin 1px lines (like Canny edges), it traces both the outer
+    and inner boundaries of the line, which differ by <= 2px on all bounding box coordinates.
+    """
+    px, py, pw, ph = cv2.boundingRect(parent_pts)
+    cx, cy, cw, ch = cv2.boundingRect(child_pts)
+    return (
+        abs(px - cx) <= 2 and
+        abs(py - cy) <= 2 and
+        abs((px + pw) - (cx + cw)) <= 2 and
+        abs((py + ph) - (cy + ch)) <= 2
+    )
 
 
 def extract_and_process_contours(binary_image: np.ndarray, width: int, height: int, config: VectorizationConfig) -> List[Contour]:
@@ -75,25 +99,20 @@ def extract_and_process_contours(binary_image: np.ndarray, width: int, height: i
                      node['valid'] = False
                      continue
                      
-    # 4. Reparenting orphaned children
+    # 4. Reparenting orphaned children and eliminating 1px edge clone traces
     # Find the closest valid ancestor for each node
     for i, node in enumerate(nodes):
-        # Determine topological depth
-        level = 0
-        curr_parent = hierarchy[i][3]
-        while curr_parent != -1:
-            level += 1
-            curr_parent = hierarchy[curr_parent][3]
-            
-        # Refine Canny double-lines in Direct Color Mode
-        # The inner trace of the 1px Canny line always occupies the odd topological levels.
-        # We discard them to ensure a single, clean polyline per topological edge.
-        if not config.use_grayscale and level % 2 != 0:
-            node['valid'] = False
-        
         if not node['valid']:
             continue
-            
+
+        # Check if this node is merely an inner 1px twin clone of its immediate raw parent
+        raw_parent_id = hierarchy[i][3]
+        if raw_parent_id != -1:
+            parent_raw = nodes[raw_parent_id]['raw_points']
+            if is_canny_clone(parent_raw, node['raw_points']):
+                node['valid'] = False
+                continue
+
         curr_parent = node['parent_id']
         while curr_parent is not None and not nodes[curr_parent]['valid']:
             curr_parent = nodes[curr_parent]['parent_id']
@@ -115,6 +134,7 @@ def extract_and_process_contours(binary_image: np.ndarray, width: int, height: i
 
     # 5. Geometry Processing and Construction
     final_contours = []
+    base_contour_data = []  # store (pts, is_closed, contour_model) for CNC offset duplication
     
     for i, node in enumerate(nodes):
         if not node['valid']:
@@ -123,8 +143,26 @@ def extract_and_process_contours(binary_image: np.ndarray, width: int, height: i
         raw_pts = node['raw_points']
         is_closed = config.force_closed
         
-        # Skip simplification to keep all raw points
-        pts = raw_pts
+        # 1. Smooth contour to eliminate discrete pixel staircase / zigzag on arcs
+        if getattr(config, 'smooth_contours', True):
+            pts = smooth_contour(
+                raw_pts,
+                sigma=getattr(config, 'smooth_sigma', 1.5),
+                is_closed=is_closed,
+                preserve_corners=getattr(config, 'corner_preservation', True),
+                corner_threshold_deg=getattr(config, 'corner_threshold_deg', 50.0)
+            )
+        else:
+            pts = raw_pts.astype(np.float32)
+
+        # 2. Simplify if configured
+        if config.epsilon_factor > 0 or config.epsilon_absolute is not None:
+            pts = simplify_contour(pts, config.epsilon_factor, config.epsilon_absolute, is_closed)
+            
+        # 3. Cleanup duplicates and collinear points
+        pts = remove_duplicate_vertices(pts)
+        if config.remove_collinear:
+            pts = remove_collinear_points(pts, config.collinear_angle_threshold_deg, is_closed)
             
         if len(pts) < 2:
             continue # Invalid shape
@@ -170,5 +208,55 @@ def extract_and_process_contours(binary_image: np.ndarray, width: int, height: i
         )
         
         final_contours.append(contour_model)
+        base_contour_data.append((pts, is_closed, contour_model))
         
+    # 6. CNC Duplicate / Offset Generation
+    if config.duplicate_distance is not None and config.duplicate_distance != 0.0:
+        distances = [config.duplicate_distance]
+        if config.duplicate_both_sides:
+            distances.append(-config.duplicate_distance)
+            
+        next_id = max((c.id for c in final_contours), default=-1) + 1
+        for orig_pts, is_closed, orig_contour in base_contour_data:
+            for dist in distances:
+                offset_pts = offset_contour(orig_pts, dist, is_closed=is_closed, miter_limit=config.miter_limit)
+                offset_pts = remove_duplicate_vertices(offset_pts)
+                if len(offset_pts) < 2:
+                    continue
+                    
+                offset_model_points = transform_coordinates(offset_pts, width, height, config.coordinate_space)
+                x_coords = [p.x for p in offset_model_points]
+                y_coords = [p.y for p in offset_model_points]
+                min_x, max_x = min(x_coords), max(x_coords)
+                min_y, max_y = min(y_coords), max(y_coords)
+                offset_bbox = BoundingBox(
+                    x=min_x,
+                    y=min_y,
+                    width=max_x - min_x,
+                    height=max_y - min_y
+                )
+                
+                offset_area = abs(cv2.contourArea(offset_pts, oriented=False))
+                offset_perimeter = cv2.arcLength(offset_pts, is_closed)
+                
+                dup_contour = Contour(
+                    id=next_id,
+                    parent_id=orig_contour.id,
+                    children_ids=[],
+                    hierarchy_level=orig_contour.hierarchy_level,
+                    is_hole=orig_contour.is_hole,
+                    is_closed=is_closed,
+                    points=offset_model_points,
+                    raw_point_count=len(offset_pts),
+                    simplified_point_count=len(offset_pts),
+                    area=float(offset_area),
+                    perimeter=float(offset_perimeter),
+                    bounding_box=offset_bbox,
+                    is_duplicate=True,
+                    offset_distance=dist,
+                    original_contour_id=orig_contour.id
+                )
+                final_contours.append(dup_contour)
+                next_id += 1
+                
     return final_contours

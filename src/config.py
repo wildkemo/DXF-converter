@@ -9,6 +9,9 @@ class ThresholdMethod(str, Enum):
     ADAPTIVE_MEAN = "adaptive_mean"
     CANNY = "canny"
     BINARY_FIXED = "binary_fixed"
+    MULTI_CHANNEL_CANNY = "multi_channel_canny"
+    HYBRID_ALL = "hybrid_all"
+    MORPHOLOGICAL_GRADIENT = "morphological_gradient"
 
 
 class FilterMethod(str, Enum):
@@ -72,8 +75,19 @@ class VectorizationConfig:
     remove_collinear: bool = True
     collinear_angle_threshold_deg: float = 0.1
     
+    # Contour Smoothing (removes pixel-staircase zigzags on arcs and curves)
+    smooth_contours: bool = True
+    smooth_sigma: float = 1.5
+    corner_preservation: bool = True
+    corner_threshold_deg: float = 50.0
+
     # Output Space
     coordinate_space: CoordinateSpace = CoordinateSpace.PIXEL
     
+    # CNC Line Duplication / Offset
+    duplicate_distance: Optional[float] = None
+    duplicate_both_sides: bool = False
+    miter_limit: float = 2.5
+
     # Debug
     debug_visualization: bool = True
